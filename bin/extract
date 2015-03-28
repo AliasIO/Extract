@@ -1,0 +1,28 @@
+#!/bin/bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+function process {
+	http_code=$(echo $@ | awk '{print $1}')
+	ip_address=$(echo $@ | awk '{print $2}')
+	url=$(echo $@ | awk '{print $3}')
+	response=$(echo $@ | awk '{$1=""; $2=""; $3=""; print}')
+
+	if [[ ! -z "$http_code" ]]; then
+		out="url $url"
+
+		out+="\ncongregate $(echo $response | jq -r '.body' | docker run --rm -i alias/congregate 2> /dev/null)"
+		out+="\nwappalyzer $(docker run --rm wappalyzer/cli $url 2> /dev/null)"
+		out+="\ngeoip $(docker run --rm alias/geoip $ip_address 2> /dev/null)"
+		
+		echo -e $out
+	fi
+}
+
+export -f process
+
+docker run --rm alias/aranea -u http://192.168.0.5/tmp/ -rv --connect-timeout 3 2> /dev/null | \
+ 	xargs -d '\n' -P10 -l bash -c 'process "$@"' _ | \
+	php index.php
