@@ -4,6 +4,8 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+url=$1
+
 function process {
 	http_code=$(echo $@ | awk '{print $1}')
 	ip_address=$(echo $@ | awk '{print $2}')
@@ -23,6 +25,6 @@ function process {
 
 export -f process
 
-docker run --rm alias/aranea -u http://192.168.0.5/tmp/ -rv --connect-timeout 3 2> /dev/null | \
- 	xargs -d '\n' -P10 -l bash -c 'process "$@"' _ | \
+docker run --rm alias/aranea -u $url -v --connect-timeout 9 -T9 2> /dev/null | \
+ 	xargs -d '\n' -P1 -l bash -c 'process "$@"' _ | \
 	php index.php

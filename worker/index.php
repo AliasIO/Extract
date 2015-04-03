@@ -1,20 +1,19 @@
 <?php
 
-namespace Extract;
-
 error_reporting(-1);
+
+ini_set('display_errors', 'on');
 
 chdir(dirname(__FILE__));
 
-require 'vendor/autoload.php';
-
 try {
-	$dbh = new \PDO('sqlite::memory:');
+	$dbh = new PDO('sqlite::memory:');
 
-	$dbh->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 	$dbh->exec(file_get_contents('db/schema.sql'));
 
+	// Capture data
 	$host = null;
 
 	while ( $line = fgets(STDIN) ) {
@@ -43,33 +42,31 @@ try {
 					)
 					');
 
-				$sth->bindParam('host',  $host,  \PDO::PARAM_STR);
-				$sth->bindParam('key',   $key,   \PDO::PARAM_STR);
-				$sth->bindParam('value', $value, \PDO::PARAM_STR);
+				$sth->bindParam('host',  $host,  PDO::PARAM_STR);
+				$sth->bindParam('key',   $key,   PDO::PARAM_STR);
+				$sth->bindParam('value', $value, PDO::PARAM_STR);
 
 				$sth->execute();
 			}
 		}
 	}
 
-
-	$sth = $dbh->prepare('SELECT * FROM data');
-	$sth->execute();
-	var_dump($sth->fetchAll());
-	exit;
-
-
+	// Preprocess data
 	$sth = $dbh->prepare('SELECT DISTINCT host FROM data');
 
 	$sth->execute();
 
-	$hosts = $sth->fetchAll(\PDO::FETCH_COLUMN, 0);
+	$hosts = $sth->fetchAll(PDO::FETCH_COLUMN, 0);
 
 	$sth = $dbh->prepare('SELECT DISTINCT key FROM data');
 
 	$sth->execute();
 
-	$keys = $sth->fetchAll(\PDO::FETCH_COLUMN, 0);
+	$keys = $sth->fetchAll(PDO::FETCH_COLUMN, 0);
+
+	$mongoClient = new MongoClient(getenv('EXTRACT_WORKER_MONGO_DB_HOST'));
+
+	$collection = $mongoClient->selectCollection(getenv('EXTRACT_WORKER_MONGO_DB_NAME'), 'raw');
 
 	foreach ( $hosts as $host ) {
 		$data = [];
@@ -87,11 +84,11 @@ try {
 				host = :host
 			');
 
-		$sth->bindParam('host', $host, \PDO::PARAM_STR);
+		$sth->bindParam('host', $host, PDO::PARAM_STR);
 
 		$sth->execute();
 
-		$results = $sth->fetchAll(\PDO::FETCH_OBJ);
+		$results = $sth->fetchAll(PDO::FETCH_OBJ);
 
 		foreach ( $results as $result ) {
 			$json = @json_decode($result->value, true);
@@ -101,7 +98,9 @@ try {
 			}
 		}
 
-		var_dump($data);
+		$collection->insert($data);
+
+		//var_dump($data);
 	}
 } catch ( \Exception $e ) {
 	echo $e->getMessage() . "\n";

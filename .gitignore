@@ -1,5 +1,5 @@
-composer.phar
-db/db.sdb*
-vendor/*
+server/.htpasswd
+server/composer.phar
+server/vendor/*
 
 !.gitkeep
