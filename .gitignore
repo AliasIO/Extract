@@ -1,4 +1,4 @@
-server/.htpasswd
+server/htpasswd
 server/composer.phar
 server/vendor/*
 

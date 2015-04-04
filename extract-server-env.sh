@@ -1,4 +1,2 @@
-export EXTRACT_NGINX_AUTH_USER=""
-export EXTRACT_NGINX_AUTH_PASS=""
-export EXTRACT_SERVER_MONGO_DB_HOST=""
-export EXTRACT_SERVER_MONGO_DB_NAME=""
+export MONGO_CONN_STR="mongodb://localhost"
+export MONGO_DB_NAME="extract"

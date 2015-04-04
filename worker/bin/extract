@@ -1,10 +1,26 @@
 #!/bin/bash
 
+if [[ -z "$SERVER_URL" ]]; then
+	echo "$SERVER_URL is empty"
+
+	exit 1
+fi
+
+if [[ -z "$SERVER_USER" ]]; then
+	echo "$SERVER_USER is empty"
+
+	exit 1
+fi
+
+if [[ -z "$SERVER_PASS" ]]; then
+	echo "$SERVER_PASS is empty"
+
+	exit 1
+fi
+
 set -e
 
 cd "$(dirname "$0")/.."
-
-url=$1
 
 function process {
 	http_code=$(echo $@ | awk '{print $1}')
@@ -19,12 +35,28 @@ function process {
 		out+="\nwappalyzer $(docker run --rm wappalyzer/cli $url 2> /dev/null)"
 		out+="\ngeoip $(docker run --rm alias/geoip $ip_address 2> /dev/null)"
 		
-		echo -e $out
+		echo -e "$out"
 	fi
 }
 
 export -f process
 
-docker run --rm alias/aranea -u $url -v --connect-timeout 9 -T9 2> /dev/null | \
- 	xargs -d '\n' -P1 -l bash -c 'process "$@"' _ | \
-	php index.php
+echo "Requesting unprocessed URL list from server..."
+
+response=$(curl -Lis $SERVER_URL/worker)
+
+status=$(echo "$response" | head -n1 | awk '{print $2}')
+
+if [[ "$status" == "200" ]]; then
+	urls=$(echo "$response" | sed -e '1,/^\r$/d')
+
+	IFS=$'\n'
+
+	for url in $urls; do
+		echo "Processing $url..."
+
+		docker run --rm alias/aranea -u $url -v --connect-timeout 9 -T9 2> /dev/null | \
+			xargs -d '\n' -P1 -l bash -c 'process "$@"' _ | \
+			php process.php 
+	done
+fi

@@ -64,10 +64,6 @@ try {
 
 	$keys = $sth->fetchAll(PDO::FETCH_COLUMN, 0);
 
-	$client = new MongoClient('mongodb://' . getenv('MONGO_DB_USER') . ':' . getenv('MONGO_DB_PASS') . '@' . getenv('MONGO_DB_HOST') . ':' . getenv('MONGO_DB_PORT'));
-
-	$collection = $client->selectCollection(getenv('MONGO_DB_NAME'), 'raw');
-
 	foreach ( $hosts as $host ) {
 		$data = [];
 
@@ -98,7 +94,16 @@ try {
 			}
 		}
 
-		$collection->insert($data);
+		// Send to server
+		$stream = stream_context_create([
+			'http' => [
+				'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+				'method'  => 'POST',
+				'content' => http_build_query(['json' => json_encode($data)]),
+				]
+			]);
+
+		echo file_get_contents(getenv('SERVER_URL') . '/worker', false, $stream) . "\n";
 	}
 } catch ( \Exception $e ) {
 	echo $e->getMessage() . "\n";
