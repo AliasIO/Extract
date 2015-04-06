@@ -1,19 +1,9 @@
 #!/bin/bash
 
+export logdir=log
+
 if [[ -z "$SERVER_URL" ]]; then
-	echo "$SERVER_URL is empty"
-
-	exit 1
-fi
-
-if [[ -z "$SERVER_USER" ]]; then
-	echo "$SERVER_USER is empty"
-
-	exit 1
-fi
-
-if [[ -z "$SERVER_PASS" ]]; then
-	echo "$SERVER_PASS is empty"
+	echo "\$SERVER_URL is empty"
 
 	exit 1
 fi
@@ -22,20 +12,26 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+function error_log {
+	while IFS='' read -r line; do
+		>&2 echo "[$1] $line"
+
+		echo "$(date) [$1] $line" >> "$logdir/error.log"
+	done;
+}
+
+export -f error_log
+
 function process {
-	http_code=$(echo $@ | awk '{print $1}')
-	ip_address=$(echo $@ | awk '{print $2}')
-	url=$(echo $@ | awk '{print $3}')
-	response=$(echo $@ | awk '{$1=""; $2=""; $3=""; print}')
+	http_code="$(echo "$@" | awk '{print $1}')"
+	ip_address="$(echo "$@" | awk '{print $2}')"
+	url="$(echo "$@" | awk '{print $3}')"
+	response="$(echo "$@" | awk '{$1=""; $2=""; $3=""; print}')"
 
 	if [[ ! -z "$http_code" ]]; then
-		out="url $url"
-
-		out+="\ncongregate $(echo $response | jq -r '.body' | docker run --rm -i alias/congregate 2> /dev/null)"
-		out+="\nwappalyzer $(docker run --rm wappalyzer/cli $url 2> /dev/null)"
-		out+="\ngeoip $(docker run --rm alias/geoip $ip_address 2> /dev/null)"
-		
-		echo -e "$out"
+		echo "$response" | jq -r ".body" 2> >(error_log jq) | php lib/congregate/index.php 2> >(error_log congregate)
+		lib/phantomjs/bin/phantomjs --load-images=false --ignore-ssl-errors=yes lib/wappalyzer/src/drivers/phantomjs/driver.js "$url" 2> >(error_log wappalyzer)
+		php lib/geoip/index.php alias/geoip "$ip_address" 2> >(error_log geoip)
 	fi
 }
 
@@ -47,16 +43,31 @@ response=$(curl -Lis $SERVER_URL/worker)
 
 status=$(echo "$response" | head -n1 | awk '{print $2}')
 
-if [[ "$status" == "200" ]]; then
-	urls=$(echo "$response" | sed -e '1,/^\r$/d')
+if [[ "$status" != "200" ]]; then
+	echo "Server returned $status" >(error_log extract)
 
-	IFS=$'\n'
-
-	for url in $urls; do
-		echo "Processing $url..."
-
-		docker run --rm alias/aranea -u $url -v --connect-timeout 9 -T9 2> /dev/null | \
-			xargs -d '\n' -P1 -l bash -c 'process "$@"' _ | \
-			php process.php 
-	done
+	exit 1
 fi
+
+results=$(echo "$response" | sed -e '1,/^\r$/d')
+
+if [[ -z "$results" ]]; then
+	echo "Server response empty" >(error_log extract)
+
+	exit 1
+fi
+
+IFS=$'\n'
+
+for result in "$results"; do
+	url=$(echo "$result" | awk '{print $1}')
+	meta=$(echo "$result" | awk '{$1=""; print}')
+
+	echo "Processing $url..."
+
+	php lib/aranea/index.php -u "$url" -rv --connect-timeout 9 -T9 2> >(error_log aranea) | \
+		xargs -0 -d '\n' -P10 -l bash -c 'process "$@"' _ 2> >(error_log xargs) | \
+		php process.php "$url" "$meta" 2> >(error_log process)
+done
+
+exit 0

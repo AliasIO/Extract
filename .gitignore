@@ -2,4 +2,7 @@ server/htpasswd
 server/composer.phar
 server/vendor/*
 
+worker/lib/*
+worker/log/*.log
+
 !.gitkeep
